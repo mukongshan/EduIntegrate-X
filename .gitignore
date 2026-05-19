@@ -2,6 +2,7 @@
 # 忽略操作系统、IDE、构建产物和常见语言的临时/二进制文件
 
 res/
+local_docs/
 
 # OS
 .DS_Store
