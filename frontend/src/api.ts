@@ -15,8 +15,14 @@ const BACKEND_MAP: Record<string, string> = {
 type Course = { id: string; name: string; time: number; score: number; teacher: string; location: string; collegeId?: string }
 type Enrollment = { enrollmentId: string; cid: string; name: string; status: 'ENROLLED' | 'WITHDRAWN'; sid: string }
 type CollegeSummary = { collegeId: string; studentCount: number; courseCount: number; enrollmentCount: number }
-type StatsSummary = { colleges: CollegeSummary[]; totals: { students: number; courses: number; enrollments: number } }
+type StatsSummary = {
+    colleges: CollegeSummary[]
+    totals: { students: number; courses: number; enrollments: number }
+    categories?: { category: string; enrollmentCount: number; percentage: number }[]
+}
 type LoginResult = { code: number; message: string; data: { sid: string; name: string } }
+
+const MOCK_ENROLLMENTS_KEY = 'eduintegrate.mock.enrollments'
 
 const localMockCourses: Course[] = [
     { id: 'C001', name: '数据库系统', time: 32, score: 3, teacher: '张老师', location: '1-301', collegeId: 'A' },
@@ -49,15 +55,33 @@ const localMockState = {
     ] as Enrollment[]
 }
 
+function loadMockEnrollments() {
+    try {
+        const raw = localStorage.getItem(MOCK_ENROLLMENTS_KEY)
+        if (!raw) return
+        const data = JSON.parse(raw)
+        if (Array.isArray(data)) {
+            localMockState.enrollments = data
+        }
+    } catch {
+        localStorage.removeItem(MOCK_ENROLLMENTS_KEY)
+    }
+}
+
+function saveMockEnrollments() {
+    localStorage.setItem(MOCK_ENROLLMENTS_KEY, JSON.stringify(localMockState.enrollments))
+}
+
 function localMockSharedCourses() {
-    return { classes: localMockCourses }
+    return { classes: localMockCourses.map(normalizeCourse) }
 }
 
 function localMockLocalCoursesFiltered(collegeId: string) {
-    return { classes: localMockLocalCourses }
+    return { classes: localMockLocalCourses.map(normalizeCourse) }
 }
 
 function localMockStats() {
+    loadMockEnrollments()
     const enrollments = localMockState.enrollments.filter(e => e.status === 'ENROLLED').length
     const colleges = localMockState.byCollege.map(item => ({
         collegeId: item.collegeId,
@@ -76,16 +100,26 @@ function localMockStats() {
     if (totals.enrollments === 0) {
         totals.enrollments = enrollments
     }
-    return { colleges, totals } satisfies StatsSummary
+    return {
+        colleges,
+        totals,
+        categories: [
+            { category: '数据与数据库', enrollmentCount: 96, percentage: 36 },
+            { category: 'XML 与系统集成', enrollmentCount: 72, percentage: 27 },
+            { category: '工程基础', enrollmentCount: 54, percentage: 20 },
+            { category: '通识拓展', enrollmentCount: 45, percentage: 17 }
+        ]
+    } satisfies StatsSummary
 }
 
 function localMockEnrollments(sid: string) {
+    loadMockEnrollments()
     return localMockState.enrollments
         .filter(e => e.sid === sid)
         .map(e => ({
             enrollmentId: e.enrollmentId,
             cid: e.cid,
-            name: localMockCourses.find(c => c.id === e.cid)?.name || '',
+            name: e.name || getCourseName(e.cid),
             status: e.status,
             sid: e.sid
         }))
@@ -102,7 +136,19 @@ function parseCode(value: unknown): number {
 }
 
 function getCourseName(cid: string) {
-    return localMockCourses.find(c => c.id === cid)?.name || ''
+    return [...localMockCourses, ...localMockLocalCourses].find(c => c.id === cid)?.name || ''
+}
+
+function normalizeCourse(item: any): Course {
+    return {
+        id: String(item?.id ?? item?.courseId ?? item?.课程编号 ?? item?.编号 ?? item?.Cno ?? ''),
+        name: String(item?.name ?? item?.courseName ?? item?.课程名称 ?? item?.名称 ?? item?.Cnm ?? ''),
+        time: Number(item?.time ?? item?.hours ?? item?.课时 ?? item?.Ctm ?? 0),
+        score: Number(item?.score ?? item?.credit ?? item?.credits ?? item?.学分 ?? item?.Cpt ?? 0),
+        teacher: String(item?.teacher ?? item?.教师 ?? item?.老师 ?? item?.Tec ?? ''),
+        location: String(item?.location ?? item?.place ?? item?.地点 ?? item?.Pla ?? ''),
+        collegeId: item?.collegeId ?? item?.collegeID ?? item?.college ?? item?.学院
+    }
 }
 
 function ensureXmlResponseShape(json: any) {
@@ -182,7 +228,7 @@ function resolveBaseUrl(pathname: string) {
 }
 
 async function fetchXml(path: string, init?: RequestInit) {
-    const base = resolveBaseUrl(window.location.pathname)
+    const base = resolveBaseUrl(path)
     const url = base ? `${base}${path}` : path
     const res = await fetch(url, init)
     const text = await res.text()
@@ -195,7 +241,7 @@ export async function fetchSharedCourses() {
     }
     try {
         const json = await fetchXml('/api/v1/shared-courses', { headers: { Accept: 'application/xml' } })
-        const classes = normalizeArray(json?.Response?.data?.classes?.class)
+        const classes = normalizeArray(json?.Response?.data?.classes?.class).map(normalizeCourse)
         return { classes }
     } catch {
         return localMockSharedCourses()
@@ -208,34 +254,43 @@ export async function fetchLocalCourses(collegeId: string) {
     }
     try {
         const json = await fetchXml(`/api/v1/college/${collegeId}/courses`, { headers: { Accept: 'application/xml' } })
-        const classes = normalizeArray(json?.Response?.data?.classes?.class)
+        const classes = normalizeArray(json?.Response?.data?.classes?.class).map(normalizeCourse)
         return { classes }
     } catch {
         return localMockLocalCoursesFiltered(collegeId)
     }
 }
 
-export async function postEnrollment(sid: string, cid: string) {
+function formatDateTime(date = new Date()) {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const yyyy = date.getFullYear()
+    const MM = pad(date.getMonth() + 1)
+    const dd = pad(date.getDate())
+    const hh = pad(date.getHours())
+    const mm = pad(date.getMinutes())
+    const ss = pad(date.getSeconds())
+    return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}`
+}
+
+export async function postEnrollment(sid: string, cid: string, homeCollegeId = '', targetCollegeId = '') {
     if (MOCK) {
+        loadMockEnrollments()
         const existing = localMockState.enrollments.find(e => e.sid === sid && e.cid === cid && e.status === 'ENROLLED')
         if (existing) {
             return { code: 409, message: 'duplicate enrollment', data: { enrollmentId: existing.enrollmentId, status: 'EXISTS' } }
         }
         const enrollmentId = `E${Date.now()}`
-        const courseName = [...localMockCourses, ...localMockLocalCourses].find(c => c.id === cid)?.name || ''
+        const courseName = getCourseName(cid)
         localMockState.enrollments.push({ enrollmentId, cid, sid, status: 'ENROLLED' as const, name: courseName })
+        saveMockEnrollments()
         return { code: 0, message: 'success', data: { enrollmentId } }
     }
-    const now = new Date()
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const yyyy = now.getFullYear()
-    const MM = pad(now.getMonth() + 1)
-    const dd = pad(now.getDate())
-    const hh = pad(now.getHours())
-    const mm = pad(now.getMinutes())
-    const ss = pad(now.getSeconds())
-    const requestTime = `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}`
-    const xml = builder.build({ EnrollmentRequest: { meta: { homeCollegeId: '', targetCollegeId: '', requestTime }, choices: { choice: { sid, cid, score: 0 } } } })
+    const xml = builder.build({
+        EnrollmentRequest: {
+            meta: { homeCollegeId, targetCollegeId, requestTime: formatDateTime() },
+            choices: { choice: { sid, cid, score: 0 } }
+        }
+    })
     try {
         const json = await fetchXml('/api/v1/enrollments', { method: 'POST', headers: { 'Content-Type': 'application/xml', Accept: 'application/xml' }, body: xml })
         return ensureXmlResponseShape(json)
@@ -244,16 +299,23 @@ export async function postEnrollment(sid: string, cid: string) {
     }
 }
 
-export async function withdrawEnrollment(enrollmentId: string) {
+export async function withdrawEnrollment(enrollmentId: string, sid = '', cid = '') {
     if (MOCK) {
+        loadMockEnrollments()
         const enrollment = localMockState.enrollments.find(e => e.enrollmentId === enrollmentId)
         if (!enrollment) {
             return { code: 404, message: 'enrollment not found', data: { enrollmentId } }
         }
         enrollment.status = 'WITHDRAWN'
+        saveMockEnrollments()
         return { code: 0, message: 'withdraw success', data: { enrollmentId, status: 'WITHDRAWN' } }
     }
-    const xml = builder.build({ WithdrawWritebackRequest: { enrollmentId, requestTime: new Date().toISOString() } })
+    const xml = builder.build({
+        WithdrawRequest: {
+            meta: { requestTime: formatDateTime() },
+            choices: { choice: { sid, cid, score: 0 } }
+        }
+    })
     try {
         const json = await fetchXml(`/api/v1/enrollments/${enrollmentId}/withdraw`, { method: 'POST', headers: { 'Content-Type': 'application/xml', Accept: 'application/xml' }, body: xml })
         return ensureXmlResponseShape(json)
@@ -301,7 +363,7 @@ export async function fetchStats() {
             }),
             { students: 0, courses: 0, enrollments: 0 }
         )
-        return { colleges, totals }
+        return { colleges, totals, categories: localMockStats().categories }
     } catch {
         return localMockStats()
     }

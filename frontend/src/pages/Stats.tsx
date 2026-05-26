@@ -10,8 +10,8 @@ interface SummaryElement {
     studentCount: number
     courseCount: number
     enrollmentCount: number
-    sharedCourseCount: number     // 新增扩展：该学院向外提供的共享课程数
-    incomingEnrollments: number   // 新增扩展：其他学院学生选修该院共享课的总人次
+    sharedCourseCount?: number     // 新增扩展：该学院向外提供的共享课程数
+    incomingEnrollments?: number   // 新增扩展：其他学院学生选修该院共享课的总人次
 }
 
 // 新增：共享课程按类别/领域划分的跨院选课统计

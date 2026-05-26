@@ -75,6 +75,10 @@ function parseLogin(xmlText) {
     return result
 }
 
+function findCourseName(cid) {
+    return (classes.find(c => c.id === cid) || localCourses.find(c => c.id === cid) || {}).name || ''
+}
+
 const server = http.createServer(async (req, res) => {
     const requestUrl = new URL(req.url, `http://${req.headers.host}`)
     const { pathname, searchParams } = requestUrl
@@ -121,7 +125,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         const id = 'E' + String(enrollmentSeq++).padStart(6, '0')
-        enrollments[id] = { enrollmentId: id, sid, cid, status: 'ENROLLED' }
+        enrollments[id] = { enrollmentId: id, sid, cid, name: findCourseName(cid), status: 'ENROLLED' }
         return sendXml(res, 0, 'success', { enrollmentId: id })
     }
 
@@ -171,7 +175,7 @@ const server = http.createServer(async (req, res) => {
         const sid = pathname.split('/')[4]
         const list = Object.values(enrollments)
             .filter(e => e.sid === sid)
-            .map(e => ({ enrollmentId: e.enrollmentId, cid: e.cid, name: (classes.find(c => c.id === e.cid) || {}).name || '', status: e.status }))
+            .map(e => ({ enrollmentId: e.enrollmentId, cid: e.cid, name: e.name || findCourseName(e.cid), status: e.status }))
         return sendXml(res, 0, 'success', { enrollments: { enrollment: list } })
     }
 

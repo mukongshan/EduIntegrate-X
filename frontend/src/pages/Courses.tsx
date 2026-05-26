@@ -55,9 +55,9 @@ export default function Courses() {
         if (!search) return courses
         const q = search.toLowerCase()
         return courses.filter(c =>
-            c.id.toLowerCase().includes(q) ||
-            c.name.toLowerCase().includes(q) ||
-            c.teacher.toLowerCase().includes(q)
+            (c.id || '').toLowerCase().includes(q) ||
+            (c.name || '').toLowerCase().includes(q) ||
+            (c.teacher || '').toLowerCase().includes(q)
         )
     }
 
@@ -68,7 +68,9 @@ export default function Courses() {
             return
         }
         setMessage('提交中...')
-        const res: any = await postEnrollment(sid!, cid)
+        const course = courses.find(item => item.id === cid)
+        const targetCollegeId = course?.collegeId || resolvedCollegeId
+        const res: any = await postEnrollment(sid!, cid, resolvedCollegeId, targetCollegeId)
         if (res.code === 0) {
             setMessage(`选课成功：${res.data.enrollmentId}`)
             setEnrolledIds(prev => new Set([...prev, cid]))
@@ -81,18 +83,18 @@ export default function Courses() {
         <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-semibold text-white">课程列表</h2>
-                    <p className="text-sm text-slate-400">支持本院与跨院共享课程查询</p>
+                    <h2 className="text-2xl font-semibold text-slate-950">课程列表</h2>
+                    <p className="text-sm text-slate-500">支持本院与跨院共享课程查询</p>
                 </div>
-                <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
+                <div className="inline-flex rounded-md border border-slate-200 bg-slate-100 p-1">
                     <button
-                        className={`rounded-full px-4 py-2 text-sm font-semibold transition ${tab === 'local' ? 'bg-white text-slate-900' : 'text-slate-300 hover:text-white'}`}
+                        className={`rounded px-4 py-2 text-sm font-semibold transition ${tab === 'local' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600 hover:text-slate-950'}`}
                         onClick={() => setTab('local')}
                     >
                         本院课程
                     </button>
                     <button
-                        className={`rounded-full px-4 py-2 text-sm font-semibold transition ${tab === 'shared' ? 'bg-white text-slate-900' : 'text-slate-300 hover:text-white'}`}
+                        className={`rounded px-4 py-2 text-sm font-semibold transition ${tab === 'shared' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600 hover:text-slate-950'}`}
                         onClick={() => setTab('shared')}
                     >
                         共享课程
@@ -101,25 +103,25 @@ export default function Courses() {
             </div>
 
             {message && (
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+                <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
                     {message}
                 </div>
             )}
 
-            <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3">
+            <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-white px-4 py-3 shadow-sm">
                 <input
                     type="text"
                     placeholder="搜索课程号、名称或教师..."
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    className="w-full bg-transparent text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none"
+                    className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
                 />
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60">
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
-                        <thead className="bg-slate-900/80 text-left text-xs uppercase tracking-widest text-slate-500">
+                        <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                             <tr>
                                 <th className="px-4 py-3">课程号</th>
                                 <th className="px-4 py-3">名称</th>
@@ -131,30 +133,30 @@ export default function Courses() {
                                 <th className="px-4 py-3">操作</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-white/5">
+                        <tbody className="divide-y divide-slate-100">
                             {filteredCourses().map(c => {
                                 const enrolled = enrolledIds.has(c.id)
                                 return (
-                                    <tr key={c.id} className="hover:bg-white/5">
-                                        <td className="px-4 py-3 font-mono text-xs text-slate-400">{c.id}</td>
-                                        <td className="px-4 py-3 text-white">
+                                    <tr key={c.id} className="hover:bg-slate-50">
+                                        <td className="px-4 py-3 font-mono text-xs text-slate-500">{c.id}</td>
+                                        <td className="px-4 py-3 font-medium text-slate-950">
                                             {enrolled && (
                                                 <span className="mr-2 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-300">
                                                     已选
                                                 </span>
                                             )}
-                                            {c.name}
+                                            {c.name || '未命名课程'}
                                         </td>
-                                        <td className="px-4 py-3 text-slate-300">{c.time}</td>
-                                        <td className="px-4 py-3 text-slate-300">{c.score}</td>
-                                        <td className="px-4 py-3 text-slate-300">{c.teacher}</td>
-                                        <td className="px-4 py-3 text-slate-300">{c.location}</td>
-                                        {tab === 'shared' && <td className="px-4 py-3 text-slate-300">{c.collegeId || '-'}</td>}
+                                        <td className="px-4 py-3 text-slate-600">{c.time}</td>
+                                        <td className="px-4 py-3 text-slate-600">{c.score}</td>
+                                        <td className="px-4 py-3 text-slate-600">{c.teacher}</td>
+                                        <td className="px-4 py-3 text-slate-600">{c.location}</td>
+                                        {tab === 'shared' && <td className="px-4 py-3 text-slate-600">{c.collegeId || '-'}</td>}
                                         <td className="px-4 py-3">
                                             <button
                                                 onClick={() => enroll(c.id)}
                                                 disabled={enrolled}
-                                                className={`rounded-full px-4 py-2 text-xs font-semibold transition ${enrolled ? 'cursor-not-allowed bg-white/5 text-slate-500' : 'bg-white text-slate-900 hover:-translate-y-0.5 hover:bg-slate-100'}`}
+                                                className={`rounded-md px-4 py-2 text-xs font-semibold transition ${enrolled ? 'cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-slate-950 text-white hover:-translate-y-0.5 hover:bg-slate-800'}`}
                                             >
                                                 {enrolled ? '已选' : '选课'}
                                             </button>
@@ -168,7 +170,7 @@ export default function Courses() {
             </div>
 
             {filteredCourses().length === 0 && (
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-400">
+                <div className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
                     暂无课程
                 </div>
             )}

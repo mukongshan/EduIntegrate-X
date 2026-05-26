@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { Link, Outlet, useParams } from 'react-router-dom'
+import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
+import { GraduationCap, LogIn, UserRound } from 'lucide-react'
 
 const THEMES: Record<string, { title: string; color: string }> = {
     A: { title: '学院 A 选课系统', color: '#2563eb' },
@@ -36,30 +37,45 @@ export default function CollegeLayout() {
     }, [resolvedId])
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100">
-            <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur">
-                <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+        <div className="min-h-screen bg-[#f5f7fb] text-slate-900">
+            <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+                <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3">
                     <div className="flex items-center gap-3">
                         <div
-                            className="h-10 w-10 rounded-2xl shadow-lg"
-                            style={{ background: `linear-gradient(135deg, ${theme.color}, #0f172a)` }}
-                        />
+                            className="flex h-10 w-10 items-center justify-center rounded-lg text-white shadow-sm"
+                            style={{ background: theme.color }}
+                        >
+                            <GraduationCap className="h-5 w-5" />
+                        </div>
                         <div>
-                            <div className="text-lg font-semibold text-white">{theme.title}</div>
-                            <div className="text-xs uppercase tracking-[0.2em] text-slate-500">EduIntegrate</div>
+                            <div className="text-base font-semibold text-slate-950">{theme.title}</div>
+                            <div className="text-xs text-slate-500">XML 异构教务集成门户</div>
                         </div>
                     </div>
-                    <nav className="flex items-center gap-6 text-sm">
-                        <Link className="text-slate-300 hover:text-white" to={`/college/${resolvedId}`}>首页</Link>
-                        <Link className="text-slate-300 hover:text-white" to={`/college/${resolvedId}/courses`}>课程</Link>
-                        <Link className="text-slate-300 hover:text-white" to={`/college/${resolvedId}/enrollments`}>我的选课</Link>
-                        {name ? (
-                            <Link className="text-slate-300 hover:text-white" to={`/college/${resolvedId}/login`}>切换用户</Link>
-                        ) : (
-                            <Link className="text-slate-300 hover:text-white" to={`/college/${resolvedId}/login`}>登录</Link>
-                        )}
+                    <nav className="flex items-center gap-1 text-sm">
+                        {[
+                            [`/college/${resolvedId}`, '首页'],
+                            [`/college/${resolvedId}/courses`, '课程'],
+                            [`/college/${resolvedId}/enrollments`, '我的选课']
+                        ].map(([to, label]) => (
+                            <NavLink
+                                key={to}
+                                end={label === '首页'}
+                                className={({ isActive }) =>
+                                    `rounded-md px-3 py-2 font-medium transition ${isActive ? 'bg-slate-100 text-slate-950' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`
+                                }
+                                to={to}
+                            >
+                                {label}
+                            </NavLink>
+                        ))}
+                        <Link className="ml-2 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50" to={`/college/${resolvedId}/login`}>
+                            <LogIn className="h-4 w-4" />
+                            {name ? '切换用户' : '登录'}
+                        </Link>
                     </nav>
-                    <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200">
+                    <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                        <UserRound className="h-4 w-4" />
                         {name ? name : '访客'}
                     </div>
                 </div>

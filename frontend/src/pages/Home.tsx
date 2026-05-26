@@ -23,36 +23,30 @@ export default function Home() {
     const isLoggedIn = !!name
 
     return (
-        <div className="space-y-10">
-            <div className={`relative overflow-hidden rounded-[28px] bg-gradient-to-br ${theme.gradient} p-10 shadow-2xl`}
-                style={{ boxShadow: '0 25px 80px rgba(15, 23, 42, 0.55)' }}
-            >
-                <div className="absolute inset-0 bg-black/25" />
-                <div className="absolute -bottom-24 -right-20 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
-                <div className="absolute -top-20 -left-10 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-
-                <div className="relative z-10 max-w-2xl space-y-6">
+        <div className="space-y-8">
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="grid gap-6 p-8 lg:grid-cols-[1.4fr_0.8fr] lg:items-center">
+                    <div className="space-y-6">
                     <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 backdrop-blur">
-                            <BookOpen className="h-6 w-6 text-white" />
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg text-white" style={{ background: theme.color }}>
+                            <BookOpen className="h-6 w-6" />
                         </div>
                         <div>
-                            <div className="text-sm uppercase tracking-[0.3em] text-white/70">EduIntegrate</div>
-                            <h1 className="text-3xl font-bold text-white">{theme.title}</h1>
-                            <p className="text-sm text-white/70">异构数据库集成 · 统一 XML Schema 交换</p>
+                            <div className="text-xs font-semibold uppercase text-slate-500">EduIntegrate</div>
+                            <h1 className="text-3xl font-bold text-slate-950">{theme.title}</h1>
+                            <p className="text-sm text-slate-500">异构数据库集成 · 统一 XML Schema 交换</p>
                         </div>
                     </div>
 
                     {isLoggedIn ? (
-                        <div className="inline-flex items-center gap-3 rounded-2xl bg-white/15 px-5 py-3 text-white shadow-lg">
+                        <div className="inline-flex flex-wrap items-center gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
                             <User className="h-4 w-4" />
                             <span className="font-semibold">你好，{name}</span>
-                            <span className="text-white/70">（{sid}）</span>
-                            <span className="text-white/50">|</span>
-                            <span className="text-sm text-white/80">已登录，可直接选课</span>
+                            <span className="text-emerald-700">（{sid}）</span>
+                            <span className="text-sm text-emerald-700">已登录，可直接选课</span>
                         </div>
                     ) : (
-                        <div className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2 text-sm text-white/70">
+                        <div className="inline-flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                             <Lock className="h-4 w-4" />
                             登录后可进行选课、退课等操作
                         </div>
@@ -61,7 +55,8 @@ export default function Home() {
                     <div className="flex flex-wrap gap-4">
                         <Link
                             to={`/college/${resolvedId}/courses`}
-                            className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-slate-900 transition hover:-translate-y-0.5 hover:bg-slate-100"
+                            className="inline-flex items-center gap-2 rounded-md px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5"
+                            style={{ background: theme.color }}
                         >
                             进入选课
                             <ArrowRight className="h-4 w-4" />
@@ -69,11 +64,28 @@ export default function Home() {
                         {!isLoggedIn && (
                             <Link
                                 to={`/college/${resolvedId}/login`}
-                                className="inline-flex items-center gap-2 rounded-xl border border-white/40 bg-white/10 px-6 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-white/20"
+                                className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-50"
                             >
                                 登录
                             </Link>
                         )}
+                    </div>
+                    </div>
+                    <div className="grid gap-3 rounded-lg bg-slate-50 p-5">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                            <span className="text-sm text-slate-500">当前学院</span>
+                            <span className="text-lg font-bold text-slate-950">{resolvedId}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div className="rounded-md bg-white p-3">
+                                <div className="text-slate-500">交换格式</div>
+                                <div className="mt-1 font-semibold text-slate-900">application/xml</div>
+                            </div>
+                            <div className="rounded-md bg-white p-3">
+                                <div className="text-slate-500">业务流程</div>
+                                <div className="mt-1 font-semibold text-slate-900">选课 / 退课</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -81,34 +93,34 @@ export default function Home() {
             {/* 功能卡片 */}
             <div className="grid gap-6 md:grid-cols-3">
 
-                <Link to={`/college/${resolvedId}/courses?tab=local`} className="group rounded-2xl border border-slate-800 bg-slate-900/70 p-6 transition-all duration-300 hover:-translate-y-2 hover:border-slate-700 hover:shadow-xl hover:shadow-blue-900/20">
-                    <div className="w-12 h-12 rounded-xl bg-blue-600/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <Link to={`/college/${resolvedId}/courses?tab=local`} className="group rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-md">
+                    <div className="w-11 h-11 rounded-md bg-blue-50 flex items-center justify-center mb-4">
                         <BookOpen className="w-6 h-6 text-blue-400" />
                     </div>
-                    <h3 className="text-lg font-bold text-slate-100 mb-2">本院课程</h3>
-                    <p className="text-slate-400 text-sm mb-4">查看并选修本院开设的所有课程，涵盖各专业核心课程</p>
+                    <h3 className="text-lg font-bold text-slate-950 mb-2">本院课程</h3>
+                    <p className="text-slate-500 text-sm mb-4">查看并选修本院开设的所有课程，涵盖各专业核心课程</p>
                     <div className="flex items-center gap-2 text-blue-400 text-sm font-semibold group-hover:text-blue-300">
                         查看课程 <ArrowRight className="w-4 h-4" />
                     </div>
                 </Link>
 
-                <Link to={`/college/${resolvedId}/courses?tab=shared`} className="group rounded-2xl border border-slate-800 bg-slate-900/70 p-6 transition-all duration-300 hover:-translate-y-2 hover:border-slate-700 hover:shadow-xl hover:shadow-emerald-900/20">
-                    <div className="w-12 h-12 rounded-xl bg-emerald-600/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <Link to={`/college/${resolvedId}/courses?tab=shared`} className="group rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-emerald-200 hover:shadow-md">
+                    <div className="w-11 h-11 rounded-md bg-emerald-50 flex items-center justify-center mb-4">
                         <Globe className="w-6 h-6 text-emerald-400" />
                     </div>
-                    <h3 className="text-lg font-bold text-slate-100 mb-2">共享课程</h3>
-                    <p className="text-slate-400 text-sm mb-4">跨院选修其他学院的开放课程，拓宽学习视野，探索跨学科领域</p>
+                    <h3 className="text-lg font-bold text-slate-950 mb-2">共享课程</h3>
+                    <p className="text-slate-500 text-sm mb-4">跨院选修其他学院的开放课程，拓宽学习视野，探索跨学科领域</p>
                     <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold group-hover:text-emerald-300">
                         查看课程 <ArrowRight className="w-4 h-4" />
                     </div>
                 </Link>
 
-                <Link to={`/college/${resolvedId}/enrollments`} className="group rounded-2xl border border-slate-800 bg-slate-900/70 p-6 transition-all duration-300 hover:-translate-y-2 hover:border-slate-700 hover:shadow-xl hover:shadow-orange-900/20">
-                    <div className="w-12 h-12 rounded-xl bg-orange-600/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <Link to={`/college/${resolvedId}/enrollments`} className="group rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-md">
+                    <div className="w-11 h-11 rounded-md bg-orange-50 flex items-center justify-center mb-4">
                         <ClipboardList className="w-6 h-6 text-orange-400" />
                     </div>
-                    <h3 className="text-lg font-bold text-slate-100 mb-2">我的选课</h3>
-                    <p className="text-slate-400 text-sm mb-4">查看已选课程，进行退课操作，管理个人课表</p>
+                    <h3 className="text-lg font-bold text-slate-950 mb-2">我的选课</h3>
+                    <p className="text-slate-500 text-sm mb-4">查看已选课程，进行退课操作，管理个人课表</p>
                     <div className="flex items-center gap-2 text-orange-400 text-sm font-semibold group-hover:text-orange-300">
                         查看详情 <ArrowRight className="w-4 h-4" />
                     </div>
