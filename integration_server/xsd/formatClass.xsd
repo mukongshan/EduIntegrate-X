@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 统一课程结构 Schema -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+    
+    <xs:element name="classes">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="class" type="ClassType" maxOccurs="unbounded"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+    
+    <xs:complexType name="ClassType">
+        <xs:sequence>
+            <xs:element name="id" type="xs:string"/>
+            <xs:element name="name" type="xs:string"/>
+            <xs:element name="time" type="xs:unsignedByte" minOccurs="0"/>
+            <xs:element name="score" type="xs:unsignedByte" minOccurs="0"/>
+            <xs:element name="teacher" type="xs:string" minOccurs="0"/>
+            <xs:element name="location" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+    
+</xs:schema>
