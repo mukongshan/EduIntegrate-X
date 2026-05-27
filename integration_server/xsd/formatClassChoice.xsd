@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 统一选课结构 Schema -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+    
+    <xs:element name="choices">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="choice" type="ChoiceType" maxOccurs="unbounded"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+    
+    <xs:complexType name="ChoiceType">
+        <xs:sequence>
+            <xs:element name="sid" type="xs:string"/>
+            <xs:element name="cid" type="xs:string"/>
+            <xs:element name="score" type="xs:unsignedByte" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+    
+</xs:schema>
