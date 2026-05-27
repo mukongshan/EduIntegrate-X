@@ -1,0 +1,180 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --theme: #1e40af;
+    --ink: #172033;
+    --muted: #667085;
+    --line: #d8dee8;
+    --surface: #ffffff;
+}
+
+body {
+    font-family: "Space Grotesk", "Noto Serif SC", sans-serif;
+    margin: 0;
+    padding: 0;
+    background:
+        linear-gradient(180deg, #eef3f8 0%, #f7f9fc 38%, #f4f6fa 100%);
+    color: #172033;
+}
+
+body::selection {
+    background: color-mix(in srgb, var(--theme) 20%, white);
+}
+
+.app-shell {
+    background:
+        linear-gradient(90deg, rgba(37, 99, 235, 0.06), transparent 26%),
+        linear-gradient(270deg, rgba(16, 185, 129, 0.05), transparent 30%),
+        #f6f8fb;
+}
+
+.surface {
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+}
+
+.soft-panel {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(248, 250, 252, 0.86);
+}
+
+.focus-ring:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme) 18%, transparent);
+    border-color: color-mix(in srgb, var(--theme) 46%, #cbd5e1);
+}
+
+@keyframes grow-bar {
+    0% {
+        width: 0;
+    }
+
+    100% {
+        width: var(--target-width, 100%);
+    }
+}
+
+@keyframes fade-in {
+    0% {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-grow {
+    animation: grow-bar 1.2s ease-out forwards;
+}
+
+.animate-fade-in {
+    animation: fade-in 0.6s ease-out both;
+}
+
+.home-info {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+.home-info-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px 20px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.home-info-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+}
+
+.home-info-card h3 {
+    margin: 0 0 8px;
+    font-size: 15px;
+    color: var(--ink);
+}
+
+.home-info-card p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+/* Tab bar */
+.tab-bar {
+    display: flex;
+    gap: 4px;
+    background: #f1f5f9;
+    padding: 4px;
+    border-radius: 10px;
+    width: fit-content;
+    margin: 16px 0;
+}
+
+.tab-btn {
+    padding: 8px 20px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+    transition: all 0.2s;
+}
+
+.tab-btn.active {
+    background: #fff;
+    color: var(--theme);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tab-btn:hover:not(.active) {
+    color: var(--ink);
+}
+
+/* Search bar */
+.search-bar {
+    margin-bottom: 16px;
+}
+
+.search-input {
+    width: 100%;
+    max-width: 400px;
+    padding: 10px 14px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--theme);
+}
+
+/* Enrolled row */
+.row-enrolled {
+    background: #f0fdf4;
+}
+
+.enrolled-badge {
+    color: #16a34a;
+    font-weight: 700;
+    margin-right: 4px;
+}
+
+.table td button:disabled {
+    background: #e2e8f0;
+    color: #94a3b8;
+    cursor: not-allowed;
+}
