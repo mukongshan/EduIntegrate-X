@@ -1,0 +1,1 @@
+"""College B application package."""
