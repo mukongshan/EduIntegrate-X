@@ -1,57 +1,51 @@
-# EduIntegrate Frontend (MVP)
+# EduIntegrate Frontend
+
+前端是学院门户和集成统计页，默认用于本机真实联调演示：登录/本院课程直连学院后端，共享课程/跨院选课/退选/我的选课/统计直连集成服务器。
+
+完整演示环境启动后，A/B/C 每院都有 50 个学生、10 门课程、250 条本院选课记录，统计页会展示三院汇总。
 
 ## 快速启动
+
+推荐从仓库根目录启动完整演示：
+
+```bash
+./scripts/install_demo_deps.sh
+./scripts/dev_up.sh
+```
+
+只启动前端：
 
 ```bash
 cd frontend
 npm install
-# 方式一：使用 mock server（开发预览用）
-npm run mock    # 启动 mock 后端在 localhost:8081
-npm run dev     # 启动前端在 localhost:5173
-
-# 方式二：连接真实后端（联调/部署用）
-# 修改 .env 文件（见下方配置说明），然后
 npm run dev
 ```
 
-## 环境配置说明
+## 环境配置
 
-前端通过环境变量决定使用 mock 还是真实后端，配置文件为 `.env`（根目录）。
+Vite 已配置为读取仓库根目录 `.env`。
 
-```bash
-# .env 示例
-VITE_USE_MOCK=false                              # false=真实后端，true=浏览器内mock
-VITE_API_URL_INTEGRATION=http://localhost:8081   # 集成服务器地址（必填）
-VITE_API_URL_A=http://localhost:8085             # 学院A后端地址
-VITE_API_URL_B=http://localhost:8085             # 学院B后端地址
-VITE_API_URL_C=http://localhost:8085             # 学院C后端地址
+```env
+VITE_USE_MOCK=false
+VITE_API_URL_A=http://localhost:8000
+VITE_API_URL_B=http://localhost:8001
+VITE_API_URL_C=http://localhost:8002
+VITE_API_URL_INTEGRATION=http://localhost:8081
+VITE_INTEGRATION_API_KEY=integration-server-api-key-2026
 ```
 
-### mock 与真实后端的切换
+`VITE_USE_MOCK=true` 时使用浏览器内存 mock，仅用于界面预览。作业演示请使用 `false`。
 
-- `VITE_USE_MOCK=true`：所有数据来自浏览器内存的 mock，不发真实请求（仅用于预览）
-- `VITE_USE_MOCK=false`：所有 API 调用发到真实后端；后端不可用时会 fallback 到 mock 保底
+## 后端接口
 
-## 后端接口要求
+| 接口 | 方法 | 说明 | 目标 |
+| --- | --- | --- | --- |
+| `/api/v1/auth/login` | POST | 登录 | 当前学院后端 |
+| `/api/v1/courses` | GET | 本院课程 | 当前学院后端 |
+| `/api/v1/shared-courses` | GET | 共享课程 | 集成服务器 |
+| `/api/v1/enrollments` | POST | 跨院选课 | 集成服务器 |
+| `/api/v1/students/{sid}/enrollments` | GET | 我的选课 | 集成服务器 |
+| `/api/v1/enrollments/{id}/withdraw` | POST | 退选 | 集成服务器 |
+| `/api/v1/stats/summary` | GET | 统计汇总 | 集成服务器，需带演示 API Key |
 
-前端期望后端实现以下接口（详细说明见 `/docs/API协议与联调说明.md`）：
-
-| 接口                                 | 方法 | 说明             | 路由解析                   |
-| ------------------------------------ | ---- | ---------------- | -------------------------- |
-| `/api/v1/shared-courses`             | GET  | 获取共享课程列表 | → VITE_API_URL_INTEGRATION |
-| `/api/v1/college/{A\|B\|C}/courses`  | GET  | 获取本院课程     | → VITE_API_URL_A/B/C       |
-| `/api/v1/auth/login`                 | POST | 登录验证         | → VITE_API_URL_INTEGRATION |
-| `/api/v1/enrollments`                | POST | 提交选课         | → VITE_API_URL_INTEGRATION |
-| `/api/v1/students/{sid}/enrollments` | GET  | 获取学生选课列表 | → VITE_API_URL_INTEGRATION |
-| `/api/v1/enrollments/{id}/withdraw`  | POST | 退选             | → VITE_API_URL_INTEGRATION |
-| `/api/v1/stats/summary`              | GET  | 统计汇总         | → VITE_API_URL_INTEGRATION |
-
-**重要**：前端通过 URL 路径自动判断发到哪个后端：
-- 包含 `/college/` 的路径 → 打到对应学院后端（A/B/C）
-- 其余 `/api/v1/...` 路径 → 打到集成服务器（INTEGRATION）
-
-## 开发注意事项
-
-- 开发时后端地址使用 `localhost`；部署时替换为内网地址（如 `10.60.254.43:8081`）
-- 不要在代码中硬编码后端地址，统一使用环境变量
-- 切换 mock/真实后端后需**重启 dev server** 才能生效
+真实联调模式下，选课/退选失败会返回错误状态，不再伪造成功结果。

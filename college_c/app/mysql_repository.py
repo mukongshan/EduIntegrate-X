@@ -9,6 +9,8 @@ try:
 except ImportError:  # pragma: no cover - exercised only when mysql mode is requested without dependency
     pymysql = None
 
+from demo_data import generate_college_demo_data
+
 from .models import AccountRecord, CourseRecord, EnrollmentRecord, StudentRecord
 from .repository import CourseFullError, NotFoundError, ValidationError
 
@@ -171,30 +173,70 @@ class MySqlCollegeCRepository:
         self.seed_demo_data()
 
     def seed_demo_data(self) -> None:
+        data = generate_college_demo_data(self.college_id)
+        now = data.enrollments[0].created_at.replace(tzinfo=None) if data.enrollments else _utc_now().replace(tzinfo=None)
         conn = self._connect(self.database)
         try:
             with conn.cursor() as cursor:
                 if self._scalar(conn, "SELECT COUNT(1) FROM Account") == 0:
                     cursor.executemany(
                         "INSERT INTO Account (acc, passwd) VALUES (%s, %s)",
-                        [("c_student1", "123456"), ("c_student2", "123456"), ("c_admin", "admin1")],
+                        [(account.username, account.password) for account in data.accounts],
                     )
                 if self._scalar(conn, "SELECT COUNT(1) FROM Student") == 0:
                     cursor.executemany(
                         "INSERT INTO Student (Sno, Snm, Sex, Sde, Pwd) VALUES (%s, %s, %s, %s, %s)",
                         [
-                            ("C2024001", "陈一鸣", "男", "计科", "123456"),
-                            ("C2024002", "赵雨晴", "女", "软工", "123456"),
-                            ("C2024003", "周启航", "男", "数据", "123456"),
+                            (student.student_id, student.name, student.gender[:1], student.major, "123456")
+                            for student in data.students
                         ],
                     )
                 if self._scalar(conn, "SELECT COUNT(1) FROM Course") == 0:
                     cursor.executemany(
                         "INSERT INTO Course (Cno, Cnm, Ctm, Cpt, Tec, Pla, Share, capacity) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                         [
-                            ("C001", "软件工程", 32, 3, "陈老师", "C-401", "Y", 2),
-                            ("C002", "操作系统", 40, 4, "刘老师", "C-305", "N", 30),
-                            ("C003", "数据挖掘", 32, 3, "黄老师", "C-210", "Y", 30),
+                            (
+                                course.course_id,
+                                course.name,
+                                course.time,
+                                course.score,
+                                course.teacher,
+                                course.location,
+                                course.shared,
+                                course.capacity,
+                            )
+                            for course in data.courses
+                        ],
+                    )
+                if self._scalar(conn, "SELECT COUNT(1) FROM Enrollment") == 0:
+                    cursor.executemany(
+                        "INSERT INTO Enrollment (Cno, Sno, Grd) VALUES (%s, %s, %s)",
+                        [
+                            (enrollment.course_id, enrollment.student_id, enrollment.score)
+                            for enrollment in data.enrollments
+                        ],
+                    )
+                if self._scalar(conn, "SELECT COUNT(1) FROM EnrollmentLog") == 0:
+                    cursor.executemany(
+                        """
+                        INSERT INTO EnrollmentLog
+                        (enrollment_id, student_id, course_id, source_college_id, target_college_id, score, origin, status, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        [
+                            (
+                                enrollment.enrollment_id,
+                                enrollment.student_id,
+                                enrollment.course_id,
+                                enrollment.source_college_id,
+                                enrollment.target_college_id,
+                                enrollment.score,
+                                enrollment.origin,
+                                enrollment.status,
+                                now,
+                                now,
+                            )
+                            for enrollment in data.enrollments
                         ],
                     )
             conn.commit()
@@ -245,13 +287,31 @@ class MySqlCollegeCRepository:
 
     def get_student(self, student_id: str) -> StudentRecord | None:
         row = self._fetch_one("SELECT Sno, Snm, Sex, Sde FROM Student WHERE Sno = %s", student_id)
-        return None if row is None else StudentRecord(row[0], row[1], row[2], row[3], f"c_student{row[0][-1]}")
+        return None if row is None else StudentRecord(row[0], row[1], row[2], row[3], self._account_for_student_id(row[0]))
 
     def get_student_by_account(self, username: str) -> StudentRecord | None:
-        if not username.startswith("c_student"):
+        if username == "c_admin":
             return None
-        suffix = username.removeprefix("c_student")
-        return self.get_student(f"C202400{suffix}")
+        if username.startswith("c_student"):
+            suffix = username.removeprefix("c_student")
+        elif username.startswith("cstu"):
+            suffix = username.removeprefix("cstu")
+        else:
+            return None
+        try:
+            index = int(suffix)
+        except ValueError:
+            return None
+        return self.get_student(f"C2024{index:03d}")
+
+    def _account_for_student_id(self, student_id: str) -> str:
+        try:
+            index = int(student_id[-3:])
+        except ValueError:
+            return f"external_{student_id.lower()}"
+        if index <= 2:
+            return f"c_student{index}"
+        return f"cstu{index:03d}"
 
     def get_course(self, course_id: str) -> CourseRecord | None:
         row = self._fetch_one("SELECT Cno, Cnm, Ctm, Cpt, Tec, Pla, Share, capacity FROM Course WHERE Cno = %s", course_id)
@@ -266,6 +326,40 @@ class MySqlCollegeCRepository:
     def list_shared_courses(self) -> list[CourseRecord]:
         rows = self._fetch_all("SELECT Cno, Cnm, Ctm, Cpt, Tec, Pla, Share, capacity FROM Course WHERE Share = 'Y' ORDER BY Cno")
         return [CourseRecord(row[0], row[1], int(row[2]), int(row[3]), row[4], row[5], row[6], int(row[7])) for row in rows]
+
+    def get_stats_summary(self) -> dict[str, int | str]:
+        conn = self._connect(self.database)
+        try:
+            return {
+                "collegeId": self.college_id,
+                "studentCount": int(self._scalar(conn, "SELECT COUNT(1) FROM Student WHERE Sno LIKE %s", f"{self.college_id}2024%") or 0),
+                "courseCount": int(self._scalar(conn, "SELECT COUNT(1) FROM Course") or 0),
+                "enrollmentCount": int(self._scalar(conn, "SELECT COUNT(1) FROM Enrollment") or 0),
+                "sharedCourseCount": int(self._scalar(conn, "SELECT COUNT(1) FROM Course WHERE Share = 'Y'") or 0),
+            }
+        finally:
+            conn.close()
+
+    def _ensure_inbound_student(self, student_id: str, source_college_id: str) -> StudentRecord | None:
+        student = self.get_student(student_id)
+        if student is not None:
+            return student
+        if source_college_id.upper() == self.college_id.upper():
+            return None
+        account = f"x{student_id[-8:]}"[:12]
+        conn = self._connect(self.database)
+        try:
+            with conn.cursor() as cursor:
+                if self._scalar(conn, "SELECT COUNT(1) FROM Account WHERE acc = %s", account) == 0:
+                    cursor.execute("INSERT INTO Account (acc, passwd) VALUES (%s, %s)", (account, "123456"))
+                cursor.execute(
+                    "INSERT INTO Student (Sno, Snm, Sex, Sde, Pwd) VALUES (%s, %s, %s, %s, %s)",
+                    (student_id, f"外院{student_id[-6:]}", "外", f"{source_college_id.upper()}院", "123456"),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        return self.get_student(student_id)
 
     def get_enrollment(self, enrollment_id: str) -> EnrollmentRecord | None:
         row = self._fetch_one(
@@ -330,7 +424,7 @@ class MySqlCollegeCRepository:
         return EnrollmentRecord(row[0], row[1], row[2], int(row[3]), row[4], row[5], row[6], row[7])
 
     def create_local_enrollment(self, student_id: str, course_id: str, score: int = 0) -> tuple[EnrollmentRecord, bool]:
-        student = self.get_student(student_id)
+        student = self._ensure_inbound_student(student_id, source_college_id)
         course = self.get_course(course_id)
         if student is None:
             raise NotFoundError("student not found")

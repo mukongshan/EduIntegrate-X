@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings
 from .integration import MockIntegrationGateway
 from .repository import CourseFullError, InMemoryCollegeARepository, NotFoundError, ValidationError
-from .sqlserver_repository import SqlServerCollegeARepository
 from .xml_utils import get_text, parse_xml, xml_response
 
 
@@ -55,6 +55,8 @@ def create_app(repository=None, gateway=None) -> FastAPI:
     settings = Settings()
     if repository is None:
         if settings.storage_backend.lower() == "sqlserver":
+            from .sqlserver_repository import SqlServerCollegeARepository
+
             mssql_server = _resolve_sqlserver_address(settings)
             if not settings.mssql_database.strip():
                 raise ValueError("missing MSSQL_DATABASE in .env")
@@ -75,6 +77,13 @@ def create_app(repository=None, gateway=None) -> FastAPI:
         gateway = MockIntegrationGateway(repository)
 
     app = FastAPI(title="College A Backend", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.state.settings = settings
     app.state.repository = repository
     app.state.gateway = gateway
@@ -118,6 +127,10 @@ def create_app(repository=None, gateway=None) -> FastAPI:
             return xml_response(404, "student not found", {"studentId": student_id}, 404)
         data = {"student": {"id": student.student_id, "name": student.name, "major": student.major, "gender": student.gender}}
         return xml_response(0, "success", data=data)
+
+    @app.get("/internal/v1/stats/summary")
+    async def stats_summary():
+        return xml_response(0, "success", {"summary": repository.get_stats_summary()})
 
     @app.get("/api/v1/shared-courses")
     async def shared_courses(collegeId: str = settings.college_id):

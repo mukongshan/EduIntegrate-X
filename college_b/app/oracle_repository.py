@@ -6,6 +6,8 @@ from typing import Any
 
 import oracledb
 
+from demo_data import generate_college_demo_data
+
 from .models import AccountRecord, CourseRecord, EnrollmentRecord, StudentRecord
 from .repository import CourseFullError, NotFoundError, ValidationError
 
@@ -146,6 +148,8 @@ class OracleCollegeBRepository:
         self.seed_demo_data()
 
     def seed_demo_data(self) -> None:
+        data = generate_college_demo_data(self.college_id)
+        now = data.enrollments[0].created_at.replace(tzinfo=None) if data.enrollments else _utc_now().replace(tzinfo=None)
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -153,27 +157,68 @@ class OracleCollegeBRepository:
                 cursor.executemany(
                     'INSERT INTO Account ("账户名", "密码", "级别", "客体") VALUES (:1, :2, :3, :4)',
                     [
-                        ("b_student1", "123456", 1, "B2024001"),
-                        ("b_student2", "123456", 1, "B2024002"),
-                        ("b_admin", "admin1", 9, None),
+                        (
+                            account.username,
+                            account.password,
+                            9 if account.role == "ADMN" else 1,
+                            account.student_id,
+                        )
+                        for account in data.accounts
                     ],
                 )
             if self._scalar(conn, "SELECT COUNT(1) FROM Student") == 0:
                 cursor.executemany(
                     'INSERT INTO Student ("学号", "姓名", "性别", "专业", "密码") VALUES (:1, :2, :3, :4, :5)',
                     [
-                        ("B2024001", "赵子涵", "男", "信息管理", "123456"),
-                        ("B2024002", "钱雨薇", "女", "人工智能", "123456"),
-                        ("B2024003", "孙启航", "男", "软件工程", "123456"),
+                        (student.student_id, student.name, student.gender, student.major, "123456")
+                        for student in data.students
                     ],
                 )
             if self._scalar(conn, "SELECT COUNT(1) FROM Course") == 0:
                 cursor.executemany(
                     'INSERT INTO Course ("编号", "名称", "课时", "学分", "老师", "地点", "共享") VALUES (:1, :2, :3, :4, :5, :6, :7)',
                     [
-                        ("B001", "分布式系统", "32", "3", "周老师", "B-201", "Y"),
-                        ("B002", "机器学习基础", "24", "2", "吴老师", "B-305", "Y"),
-                        ("B003", "Oracle应用", "32", "3", "郑老师", "B-408", "N"),
+                        (
+                            course.course_id,
+                            course.name,
+                            str(course.time),
+                            str(course.score),
+                            course.teacher,
+                            course.location,
+                            course.shared,
+                        )
+                        for course in data.courses
+                    ],
+                )
+            if self._scalar(conn, "SELECT COUNT(1) FROM Enrollment") == 0:
+                cursor.executemany(
+                    'INSERT INTO Enrollment ("课程编号", "学号", "得分") VALUES (:1, :2, :3)',
+                    [
+                        (enrollment.course_id, enrollment.student_id, str(enrollment.score))
+                        for enrollment in data.enrollments
+                    ],
+                )
+            if self._scalar(conn, "SELECT COUNT(1) FROM EnrollmentLog") == 0:
+                cursor.executemany(
+                    """
+                    INSERT INTO EnrollmentLog
+                    (enrollment_id, student_id, course_id, source_college_id, target_college_id, score, origin, status, created_at, updated_at)
+                    VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10)
+                    """,
+                    [
+                        (
+                            enrollment.enrollment_id,
+                            enrollment.student_id,
+                            enrollment.course_id,
+                            enrollment.source_college_id,
+                            enrollment.target_college_id,
+                            enrollment.score,
+                            enrollment.origin,
+                            enrollment.status,
+                            now,
+                            now,
+                        )
+                        for enrollment in data.enrollments
                     ],
                 )
             conn.commit()
@@ -244,6 +289,43 @@ class OracleCollegeBRepository:
         )
         return [self._course_from_row(row) for row in rows]
 
+    def get_stats_summary(self) -> dict[str, int | str]:
+        conn = self._connect()
+        try:
+            return {
+                "collegeId": self.college_id,
+                "studentCount": int(self._scalar(conn, 'SELECT COUNT(1) FROM Student WHERE "学号" LIKE :prefix', prefix=f"{self.college_id}2024%") or 0),
+                "courseCount": int(self._scalar(conn, "SELECT COUNT(1) FROM Course") or 0),
+                "enrollmentCount": int(self._scalar(conn, "SELECT COUNT(1) FROM Enrollment") or 0),
+                "sharedCourseCount": int(self._scalar(conn, 'SELECT COUNT(1) FROM Course WHERE "共享" = :shared', shared="Y") or 0),
+            }
+        finally:
+            conn.close()
+
+    def _ensure_inbound_student(self, student_id: str, source_college_id: str) -> StudentRecord | None:
+        student = self.get_student(student_id)
+        if student is not None:
+            return student
+        if source_college_id.upper() == self.college_id.upper():
+            return None
+        account = f"x{student_id[-8:]}"[:12]
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            if self._scalar(conn, 'SELECT COUNT(1) FROM Account WHERE "账户名" = :username', username=account) == 0:
+                cursor.execute(
+                    'INSERT INTO Account ("账户名", "密码", "级别", "客体") VALUES (:1, :2, :3, :4)',
+                    (account, "123456", 1, student_id),
+                )
+            cursor.execute(
+                'INSERT INTO Student ("学号", "姓名", "性别", "专业", "密码") VALUES (:1, :2, :3, :4, :5)',
+                (student_id, f"外院{student_id[-6:]}", "未知", f"{source_college_id.upper()}学院", "123456"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return self.get_student(student_id)
+
     def _course_from_row(self, row: tuple[Any, ...]) -> CourseRecord:
         return CourseRecord(row[0], row[1], int(row[2]), int(row[3]), row[4], row[5], row[6], 999)
 
@@ -303,7 +385,7 @@ class OracleCollegeBRepository:
         return f"E{_utc_now().strftime('%Y%m%d')}{next(self._enrollment_seq):04d}"
 
     def create_local_enrollment(self, student_id: str, course_id: str, score: int = 0) -> tuple[EnrollmentRecord, bool]:
-        student = self.get_student(student_id)
+        student = self._ensure_inbound_student(student_id, source_college_id)
         course = self.get_course(course_id)
         if student is None:
             raise NotFoundError("student not found")

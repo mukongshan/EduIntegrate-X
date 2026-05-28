@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings
 from .integration import MockIntegrationGateway
@@ -64,6 +65,13 @@ def create_app(repository=None, gateway=None) -> FastAPI:
         gateway = MockIntegrationGateway(repository)
 
     app = FastAPI(title="College B Backend", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.state.settings = settings
     app.state.repository = repository
     app.state.gateway = gateway
@@ -107,6 +115,10 @@ def create_app(repository=None, gateway=None) -> FastAPI:
             return xml_response(404, "student not found", {"studentId": student_id}, 404)
         data = {"student": {"id": student.student_id, "name": student.name, "major": student.major, "gender": student.gender}}
         return xml_response(0, "success", data=data)
+
+    @app.get("/internal/v1/stats/summary")
+    async def stats_summary():
+        return xml_response(0, "success", {"summary": repository.get_stats_summary()})
 
     @app.get("/api/v1/shared-courses")
     async def shared_courses(collegeId: str = settings.college_id):

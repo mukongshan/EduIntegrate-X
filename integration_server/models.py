@@ -81,4 +81,5 @@ class SharedCourse:
             "score": self.score,
             "teacher": self.teacher,
             "location": self.location,
+            "collegeId": self.college_id,
         }

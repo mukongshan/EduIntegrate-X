@@ -60,7 +60,7 @@
 
 ### 4.2 统一 XML Schema 约定
 
-- 共享课程数据统一采用 `formatClass.xsd`，核心元素为 `classes/class/id/name/time/score/teacher/location`。
+- 共享课程数据统一采用 `formatClass.xsd`，核心元素为 `classes/class/id/name/time/score/teacher/location`，可选 `collegeId` 标识开课学院。
 - 学生数据统一采用 `formatStudent.xsd`，核心元素为 `students/student/id/name/major`。
 - 选课数据统一采用 `formatClassChoice.xsd`，核心元素为 `choices/choice/sid/cid/score`。
 - 接口如需携带学院路由、请求时间、状态等业务信息，可放在外层请求封装中；核心业务数据仍按统一 Schema 传输。
@@ -174,6 +174,7 @@ Accept: application/xml
         <score>3</score>
         <teacher>张老师</teacher>
         <location>1-301</location>
+        <collegeId>A</collegeId>
       </class>
       <class>
         <id>C018</id>
@@ -182,6 +183,7 @@ Accept: application/xml
         <score>2</score>
         <teacher>李老师</teacher>
         <location>2-205</location>
+        <collegeId>A</collegeId>
       </class>
     </classes>
   </data>
@@ -287,7 +289,8 @@ Accept: application/xml
 
 - URL：`/api/v1/stats/summary`
 - 方法：`GET`
-- 说明：可用于管理端和报告展示。
+- 说明：可用于管理端和报告展示；集成服务器优先拉取三院 `/internal/v1/stats/summary` 实时统计。
+- 鉴权：需要 `Authorization: Bearer integration-server-api-key-2026`。
 
 #### 请求示例
 
@@ -295,6 +298,7 @@ Accept: application/xml
 GET /api/v1/stats/summary HTTP/1.1
 Host: integration-server.local
 Accept: application/xml
+Authorization: Bearer integration-server-api-key-2026
 ```
 
 #### 返回示例
@@ -310,20 +314,57 @@ Accept: application/xml
         <studentCount>50</studentCount>
         <courseCount>10</courseCount>
         <enrollmentCount>250</enrollmentCount>
+        <sharedCourseCount>5</sharedCourseCount>
       </college>
       <college>
         <collegeId>B</collegeId>
         <studentCount>50</studentCount>
         <courseCount>10</courseCount>
         <enrollmentCount>250</enrollmentCount>
+        <sharedCourseCount>5</sharedCourseCount>
       </college>
       <college>
         <collegeId>C</collegeId>
         <studentCount>50</studentCount>
         <courseCount>10</courseCount>
         <enrollmentCount>250</enrollmentCount>
+        <sharedCourseCount>5</sharedCourseCount>
       </college>
+      <total>
+        <studentCount>150</studentCount>
+        <courseCount>30</courseCount>
+        <enrollmentCount>750</enrollmentCount>
+      </total>
     </Summary>
+  </data>
+</Response>
+```
+
+### 5.5 查询学生集成选课记录
+
+用于前端“我的选课”页面查询学生当前未退选的跨院选课记录。
+
+- URL：`/api/v1/students/{sid}/enrollments`
+- 方法：`GET`
+- 说明：只返回集成服务器中状态不是 `WITHDRAWN` 的记录。
+
+#### 返回示例
+
+```xml
+<Response>
+  <code>0</code>
+  <message>success</message>
+  <data>
+    <enrollments>
+      <enrollment>
+        <enrollmentId>E202605280001</enrollmentId>
+        <sid>S2024001</sid>
+        <cid>B001</cid>
+        <status>ENROLLED</status>
+        <homeCollegeId>A</homeCollegeId>
+        <targetCollegeId>B</targetCollegeId>
+      </enrollment>
+    </enrollments>
   </data>
 </Response>
 ```
@@ -419,6 +460,32 @@ Accept: application/xml
 </Response>
 ```
 
+### 6.3 学院内部统计
+
+集成服务器调用该接口获取每个学院的实时数据规模。
+
+- URL：`/internal/v1/stats/summary`
+- 方法：`GET`
+- 说明：返回本院学生、课程、当前有效选课和共享课程数量。
+
+#### 返回示例
+
+```xml
+<Response>
+  <code>0</code>
+  <message>success</message>
+  <data>
+    <summary>
+      <collegeId>A</collegeId>
+      <studentCount>50</studentCount>
+      <courseCount>10</courseCount>
+      <enrollmentCount>250</enrollmentCount>
+      <sharedCourseCount>5</sharedCourseCount>
+    </summary>
+  </data>
+</Response>
+```
+
 ## 7. 联调流程说明
 
 ### 7.1 共享课程查询流程
@@ -482,6 +549,7 @@ Accept: application/xml
   - `GET /api/v1/shared-courses`：返回汇总后的共享课程（用于学院查询）。
   - `POST /api/v1/enrollments`：接收学院发起的跨院选课请求，生成 `enrollmentId`，并触发写回流程。
   - `POST /api/v1/enrollments/{enrollmentId}/withdraw`：接收学院发起的退选请求，触发退选写回流程。
+  - `GET /api/v1/students/{sid}/enrollments`：返回学生当前未退选的集成选课记录。
   - `GET /api/v1/stats/summary`：统计与汇总三院数据，供管理端查询。
 
 - 必要时实现的内部/管理接口（可选，但有助于运维与调试）：
@@ -510,8 +578,9 @@ Accept: application/xml
   11.3 前端 / 学院门户
 
 - 前端主要职责与调用：
-  - 向本院学院系统调用：登录 `POST /api/v1/auth/login`（若有）、查询课程 `GET /api/v1/courses`、发起选课/退选（本院接口）。
-  - 对跨院操作：前端通过本院后端将跨院选课请求转发到集成服务器（由本院后端负责调用 `POST /api/v1/enrollments`）。
+  - 向本院学院系统调用：登录 `POST /api/v1/auth/login`、查询本院课程 `GET /api/v1/courses`。
+  - 向集成服务器调用：共享课程 `GET /api/v1/shared-courses`、跨院选课 `POST /api/v1/enrollments`、我的选课 `GET /api/v1/students/{sid}/enrollments`、退选 `POST /api/v1/enrollments/{enrollmentId}/withdraw`、统计 `GET /api/v1/stats/summary`。
+  - 本机演示链路采用“前端直连学院后端 + 前端直连集成服务器”，便于稳定复现；学院后端仍保留本院选课与内部写回接口。
 
   11.4 支撑服务与运维接口（建议）
 

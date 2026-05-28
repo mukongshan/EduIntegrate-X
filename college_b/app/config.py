@@ -28,7 +28,7 @@ class Settings:
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     storage_backend: str = os.getenv("COLLEGE_B_STORAGE", "mock")
     use_mock_externals: bool = _as_bool(os.getenv("USE_MOCK_EXTERNALS"), True)
-    college_id: str = os.getenv("COLLEGE_ID", "B")
+    college_id: str = os.getenv("COLLEGE_B_ID", os.getenv("COLLEGE_ID", "B"))
     integration_host: str = os.getenv("INTEGRATION_HOST", "http://localhost:8081")
     secret_key: str = os.getenv("SECRET_KEY", "changeme")
     oracle_dsn: str = os.getenv("ORACLE_DSN", "")

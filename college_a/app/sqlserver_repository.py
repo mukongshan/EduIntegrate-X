@@ -6,6 +6,8 @@ from typing import Any
 
 import pyodbc
 
+from demo_data import generate_college_demo_data
+
 from .models import AccountRecord, CourseRecord, EnrollmentRecord, StudentRecord
 from .repository import CourseFullError, NotFoundError, ValidationError
 
@@ -207,34 +209,68 @@ class SqlServerCollegeARepository:
         self.seed_demo_data()
 
     def seed_demo_data(self) -> None:
+        data = generate_college_demo_data(self.college_id)
+        now = data.enrollments[0].created_at.replace(tzinfo=None) if data.enrollments else _utc_now().replace(tzinfo=None)
         conn = self._connect(self.database)
         try:
             cursor = conn.cursor()
             if self._scalar(conn, "SELECT COUNT(1) FROM [dbo].[Account]") == 0:
                 cursor.executemany(
                     "INSERT INTO [dbo].[Account] ([账户名], [密码], [权限]) VALUES (?, ?, ?)",
-                    [
-                        ("a_student1", "123456", "STUD"),
-                        ("a_student2", "123456", "STUD"),
-                        ("a_admin", "admin1", "ADMN"),
-                    ],
+                    [(account.username, account.password, account.role) for account in data.accounts],
                 )
             if self._scalar(conn, "SELECT COUNT(1) FROM [dbo].[Student]") == 0:
                 cursor.executemany(
                     "INSERT INTO [dbo].[Student] ([学号], [姓名], [性别], [院系], [关联账户]) VALUES (?, ?, ?, ?, ?)",
                     [
-                        ("S2024001", "张小明", "男", "计算机", "a_student1"),
-                        ("S2024002", "李小红", "女", "软件工程", "a_student2"),
-                        ("S2024003", "王小林", "男", "数据科学", "a_student1"),
+                        (student.student_id, student.name, student.gender, student.major, student.account_username)
+                        for student in data.students
                     ],
                 )
             if self._scalar(conn, "SELECT COUNT(1) FROM [dbo].[Course]") == 0:
                 cursor.executemany(
                     "INSERT INTO [dbo].[Course] ([课程编号], [课程名称], [学分], [授课老师], [授课地点], [共享]) VALUES (?, ?, ?, ?, ?, ?)",
                     [
-                        ("A001", "数据库系统", "3", "张老师", "1-301", "Y"),
-                        ("A002", "Java设计", "4", "李老师", "2-201", "N"),
-                        ("A003", "数仓基础", "2", "王老师", "3-105", "Y"),
+                        (
+                            course.course_id,
+                            course.name,
+                            str(course.score),
+                            course.teacher,
+                            course.location,
+                            course.shared,
+                        )
+                        for course in data.courses
+                    ],
+                )
+            if self._scalar(conn, "SELECT COUNT(1) FROM [dbo].[Enrollment]") == 0:
+                cursor.executemany(
+                    "INSERT INTO [dbo].[Enrollment] ([课程编号], [学生编号], [成绩]) VALUES (?, ?, ?)",
+                    [
+                        (enrollment.course_id, enrollment.student_id, str(enrollment.score))
+                        for enrollment in data.enrollments
+                    ],
+                )
+            if self._scalar(conn, "SELECT COUNT(1) FROM [dbo].[EnrollmentLog]") == 0:
+                cursor.executemany(
+                    """
+                    INSERT INTO [dbo].[EnrollmentLog]
+                    ([enrollment_id], [student_id], [course_id], [source_college_id], [target_college_id], [score], [origin], [status], [created_at], [updated_at])
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            enrollment.enrollment_id,
+                            enrollment.student_id,
+                            enrollment.course_id,
+                            enrollment.source_college_id,
+                            enrollment.target_college_id,
+                            enrollment.score,
+                            enrollment.origin,
+                            enrollment.status,
+                            now,
+                            now,
+                        )
+                        for enrollment in data.enrollments
                     ],
                 )
             conn.commit()
@@ -351,6 +387,50 @@ class SqlServerCollegeARepository:
             for row in rows
         ]
 
+    def get_stats_summary(self) -> dict[str, int | str]:
+        prefix = "S2024%"
+        conn = self._connect(self.database)
+        try:
+            return {
+                "collegeId": self.college_id,
+                "studentCount": int(self._scalar(conn, "SELECT COUNT(1) FROM [dbo].[Student] WHERE [学号] LIKE ?", prefix) or 0),
+                "courseCount": int(self._scalar(conn, "SELECT COUNT(1) FROM [dbo].[Course]") or 0),
+                "enrollmentCount": int(self._scalar(conn, "SELECT COUNT(1) FROM [dbo].[Enrollment]") or 0),
+                "sharedCourseCount": int(self._scalar(conn, "SELECT COUNT(1) FROM [dbo].[Course] WHERE [共享] = 'Y'") or 0),
+            }
+        finally:
+            conn.close()
+
+    def _ensure_inbound_student(self, student_id: str, source_college_id: str) -> StudentRecord | None:
+        student = self.get_student(student_id)
+        if student is not None:
+            return student
+        if source_college_id.upper() == self.college_id.upper():
+            return None
+        account = f"x{student_id[-8:]}"[:10]
+        conn = self._connect(self.database)
+        try:
+            cursor = conn.cursor()
+            if self._scalar(conn, "SELECT COUNT(1) FROM [dbo].[Account] WHERE [账户名] = ?", account) == 0:
+                cursor.execute(
+                    "INSERT INTO [dbo].[Account] ([账户名], [密码], [权限]) VALUES (?, ?, ?)",
+                    account,
+                    "123456",
+                    "EXT",
+                )
+            cursor.execute(
+                "INSERT INTO [dbo].[Student] ([学号], [姓名], [性别], [院系], [关联账户]) VALUES (?, ?, ?, ?, ?)",
+                student_id,
+                f"外院{student_id[-6:]}",
+                "未知",
+                f"{source_college_id.upper()}学院",
+                account,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return self.get_student(student_id)
+
     def get_enrollment(self, enrollment_id: str) -> EnrollmentRecord | None:
         row = self._fetch_one(
             """
@@ -439,7 +519,7 @@ class SqlServerCollegeARepository:
         )
 
     def create_local_enrollment(self, student_id: str, course_id: str, score: int = 0) -> tuple[EnrollmentRecord, bool]:
-        student = self.get_student(student_id)
+        student = self._ensure_inbound_student(student_id, source_college_id)
         course = self.get_course(course_id)
         if student is None:
             raise NotFoundError("student not found")

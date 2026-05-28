@@ -5,6 +5,8 @@ from dataclasses import replace
 from itertools import count
 from typing import Iterable
 
+from demo_data import generate_college_demo_data
+
 from .models import AccountRecord, CourseRecord, EnrollmentRecord, StudentRecord, utc_now
 
 
@@ -42,21 +44,49 @@ class InMemoryCollegeARepository:
         self._seed()
 
     def _seed(self) -> None:
+        data = generate_college_demo_data(self.college_id)
         self.accounts = {
-            "a_student1": AccountRecord("a_student1", "123456", "STUD", "S2024001"),
-            "a_student2": AccountRecord("a_student2", "123456", "STUD", "S2024002"),
-            "a_admin": AccountRecord("a_admin", "admin1", "ADMN", None),
+            account.username: AccountRecord(account.username, account.password, account.role, account.student_id)
+            for account in data.accounts
         }
         self.students = {
-            "S2024001": StudentRecord("S2024001", "张小明", "男", "计算机", "a_student1"),
-            "S2024002": StudentRecord("S2024002", "李小红", "女", "软件工程", "a_student2"),
-            "S2024003": StudentRecord("S2024003", "王小林", "男", "数据科学", "a_student1"),
+            student.student_id: StudentRecord(
+                student.student_id,
+                student.name,
+                student.gender,
+                student.major,
+                student.account_username,
+            )
+            for student in data.students
         }
         self.courses = {
-            "A001": CourseRecord("A001", "数据库系统", 0, 3, "张老师", "1-301", "Y", 2),
-            "A002": CourseRecord("A002", "Java设计", 0, 4, "李老师", "2-201", "N", 30),
-            "A003": CourseRecord("A003", "数仓基础", 0, 2, "王老师", "3-105", "Y", 30),
+            course.course_id: CourseRecord(
+                course.course_id,
+                course.name,
+                course.time,
+                course.score,
+                course.teacher,
+                course.location,
+                course.shared,
+                course.capacity,
+            )
+            for course in data.courses
         }
+        for enrollment in data.enrollments:
+            self._store_enrollment(
+                EnrollmentRecord(
+                    enrollment.enrollment_id,
+                    enrollment.student_id,
+                    enrollment.course_id,
+                    enrollment.score,
+                    enrollment.source_college_id,
+                    enrollment.target_college_id,
+                    enrollment.origin,
+                    enrollment.status,
+                    enrollment.created_at,
+                    enrollment.updated_at,
+                )
+            )
 
     def get_account(self, username: str) -> AccountRecord | None:
         return self.accounts.get(username)
@@ -82,11 +112,36 @@ class InMemoryCollegeARepository:
     def list_shared_courses(self) -> list[CourseRecord]:
         return [course for course in self.courses.values() if course.shared.upper() == "Y"]
 
+    def get_stats_summary(self) -> dict[str, int | str]:
+        local_student_count = sum(
+            1 for student in self.students.values() if not student.account_username.startswith("external_")
+        )
+        active_enrollment_count = sum(1 for item in self.enrollments.values() if item.status == "ENROLLED")
+        return {
+            "collegeId": self.college_id,
+            "studentCount": local_student_count,
+            "courseCount": len(self.courses),
+            "enrollmentCount": active_enrollment_count,
+            "sharedCourseCount": len(self.list_shared_courses()),
+        }
+
     def _active_enrollment_count(self, course_id: str) -> int:
         return sum(1 for item in self.enrollments.values() if item.course_id == course_id and item.status == "ENROLLED")
 
     def _next_enrollment_id(self, prefix: str = "E") -> str:
         return f"{prefix}{utc_now().strftime('%Y%m%d')}{next(self._enrollment_seq):04d}"
+
+    def _ensure_inbound_student(self, student_id: str, source_college_id: str) -> StudentRecord | None:
+        student = self.get_student(student_id)
+        if student is not None:
+            return student
+        if source_college_id.upper() == self.college_id.upper():
+            return None
+        username = f"external_{student_id.lower()}"
+        self.accounts.setdefault(username, AccountRecord(username, "", "EXT", student_id))
+        student = StudentRecord(student_id, f"外院学生{student_id}", "未知", f"{source_college_id.upper()}学院", username)
+        self.students[student_id] = student
+        return student
 
     def _store_enrollment(self, record: EnrollmentRecord) -> EnrollmentRecord:
         self.enrollments[record.enrollment_id] = record
@@ -133,7 +188,7 @@ class InMemoryCollegeARepository:
     ) -> tuple[EnrollmentRecord, bool]:
         if target_college_id != self.college_id:
             raise ValidationError("target college mismatch")
-        student = self.get_student(student_id)
+        student = self._ensure_inbound_student(student_id, source_college_id)
         course = self.get_course(course_id)
         if student is None:
             raise NotFoundError("student not found")

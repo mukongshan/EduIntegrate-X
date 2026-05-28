@@ -129,6 +129,19 @@ class IntegrationRepository:
             if row:
                 return self._row_to_enrollment(row)
             return None
+
+    def list_enrollments_by_student(self, student_id: str) -> list[EnrollmentRecord]:
+        """列出学生当前未退选的集成选课记录。"""
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM enrollments
+                WHERE student_id = ? AND status != 'WITHDRAWN'
+                ORDER BY created_at DESC
+            """, (student_id,))
+            rows = cursor.fetchall()
+            return [self._row_to_enrollment(row) for row in rows]
     
     def update_enrollment_status(
         self, 

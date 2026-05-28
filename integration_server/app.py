@@ -341,11 +341,13 @@ def create_app(settings: Settings = None) -> FastAPI:
             
             # 先同步尝试一次写回；失败记录会进入后台重试队列。
             await _attempt_writeback(created_id, repo, gateway)
+            current = repo.get_enrollment_by_id(created_id)
+            current_status = current.status.value if current else EnrollmentStatus.PENDING_WRITEBACK.value
             
             # 返回响应
             data = {
                 "enrollmentId": created_id,
-                "status": EnrollmentStatus.PENDING_WRITEBACK.value,
+                "status": current_status,
                 "targetCollegeId": target_college_id,
             }
             
@@ -392,10 +394,12 @@ def create_app(settings: Settings = None) -> FastAPI:
             
             # 先同步尝试一次退选写回；失败记录会进入后台重试队列。
             await _attempt_withdraw(enrollment_id, repo, gateway)
+            current = repo.get_enrollment_by_id(enrollment_id)
+            current_status = current.status.value if current else "WITHDRAW_PENDING"
             
             data = {
                 "enrollmentId": enrollment_id,
-                "status": "WITHDRAW_PENDING",
+                "status": current_status,
             }
             
             return xml_response(0, "withdraw accepted", data)
@@ -433,6 +437,34 @@ def create_app(settings: Settings = None) -> FastAPI:
                 raw_response_xml=response_xml,
             )
             logger.error(f"Withdrawal failed for enrollment {enrollment_id}: {error_message}")
+
+    @app.get("/api/v1/students/{student_id}/enrollments")
+    async def get_student_enrollments(
+        student_id: str,
+        repo: IntegrationRepository = Depends(get_repository),
+    ):
+        """获取学生当前未退选的集成选课记录。"""
+        try:
+            records = repo.list_enrollments_by_student(student_id)
+            data = {
+                "enrollments": {
+                    "enrollment": [
+                        {
+                            "enrollmentId": record.enrollment_id,
+                            "sid": record.student_id,
+                            "cid": record.course_id,
+                            "status": record.status.value,
+                            "homeCollegeId": record.home_college_id,
+                            "targetCollegeId": record.target_college_id,
+                        }
+                        for record in records
+                    ]
+                }
+            }
+            return xml_response(0, "success", data)
+        except Exception as e:
+            logger.error(f"Error in get_student_enrollments: {str(e)}", exc_info=True)
+            return xml_response(500, f"Server error: {str(e)}")
     
     # ==================== 统计接口 ====================
     
@@ -467,19 +499,23 @@ def create_app(settings: Settings = None) -> FastAPI:
                     "shared_course_count": 0,
                 })
                 live_college_stat = live_summary.get(college_id, {})
+                merged_student_count = live_college_stat.get("student_count", college_stat.get("student_count", 0))
                 merged_course_count = live_college_stat.get("course_count", college_stat.get("course_count", 0))
+                merged_enrollment_count = live_college_stat.get("total_enrollments", college_stat.get("total_enrollments", 0))
+                merged_enrolled_count = live_college_stat.get("enrolled_count", college_stat.get("enrolled_count", 0))
+                merged_incoming_count = college_stat.get("incoming_enrollments", live_college_stat.get("incoming_enrollments", 0))
                 merged_shared_count = live_college_stat.get("shared_course_count", college_stat.get("shared_course_count", 0))
                 college_list.append({
                     "collegeId": college_id,
-                    "studentCount": college_stat.get("student_count", 0),
+                    "studentCount": merged_student_count,
                     "courseCount": merged_course_count,
-                    "enrollmentCount": college_stat.get("total_enrollments", 0),
-                    "enrolledCount": college_stat.get("enrolled_count", 0),
-                    "incomingEnrollments": college_stat.get("incoming_enrollments", 0),
+                    "enrollmentCount": merged_enrollment_count,
+                    "enrolledCount": merged_enrolled_count,
+                    "incomingEnrollments": merged_incoming_count,
                     "sharedCourseCount": merged_shared_count,
                 })
-                total_enrollments += college_stat.get("total_enrollments", 0)
-                total_students += college_stat.get("student_count", 0)
+                total_enrollments += merged_enrollment_count
+                total_students += merged_student_count
                 total_courses += merged_course_count
             
             data = {

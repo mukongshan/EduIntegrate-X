@@ -14,7 +14,7 @@ export default function Login() {
 
     async function handleLogin(e: React.FormEvent) {
         e.preventDefault()
-        const res = await loginWithPassword(sid, password)
+        const res = await loginWithPassword(sid, password, resolvedCollegeId)
         if (res.code !== 0) {
             setError('学号或密码错误')
             return

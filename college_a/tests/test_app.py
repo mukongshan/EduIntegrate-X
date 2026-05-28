@@ -15,6 +15,10 @@ def _xml_text(response_text: str, path: str) -> str | None:
     return None if node is None or node.text is None else node.text
 
 
+def _xml_count(response_text: str, path: str) -> int:
+    return len(ET.fromstring(response_text).findall(path))
+
+
 def _client():
     repository = InMemoryCollegeARepository(college_id="A")
     app = create_app(repository=repository, gateway=MockIntegrationGateway(repository))
@@ -53,6 +57,21 @@ def test_shared_courses():
     assert _xml_text(response.text, "code") == "0"
     assert _xml_text(response.text, "data/meta/collegeId") == "A"
     assert _xml_text(response.text, "data/classes/class/id") is not None
+
+
+def test_demo_data_scale_and_internal_stats():
+    client, _ = _client()
+    courses = client.get("/api/v1/courses")
+    assert courses.status_code == 200
+    assert _xml_count(courses.text, "data/courses/course") == 10
+
+    stats = client.get("/internal/v1/stats/summary")
+    assert stats.status_code == 200
+    assert _xml_text(stats.text, "data/summary/collegeId") == "A"
+    assert _xml_text(stats.text, "data/summary/studentCount") == "50"
+    assert _xml_text(stats.text, "data/summary/courseCount") == "10"
+    assert _xml_text(stats.text, "data/summary/enrollmentCount") == "250"
+    assert _xml_text(stats.text, "data/summary/sharedCourseCount") == "5"
 
 
 def test_inbound_writeback_and_withdraw():

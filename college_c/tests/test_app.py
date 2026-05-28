@@ -15,6 +15,10 @@ def _xml_text(response_text: str, path: str) -> str | None:
     return None if node is None or node.text is None else node.text
 
 
+def _xml_count(response_text: str, path: str) -> int:
+    return len(ET.fromstring(response_text).findall(path))
+
+
 def _client():
     repository = InMemoryCollegeCRepository(college_id="C")
     app = create_app(repository=repository, gateway=MockIntegrationGateway(repository))
@@ -54,6 +58,7 @@ def test_list_local_courses_uses_unified_xml_fields():
     assert _xml_text(response.text, "data/meta/collegeId") == "C"
     assert _xml_text(response.text, "data/courses/course/id") == "C001"
     assert _xml_text(response.text, "data/courses/course/time") == "32"
+    assert _xml_count(response.text, "data/courses/course") == 10
 
 
 def test_shared_courses_from_mock_integration_server():
@@ -63,6 +68,17 @@ def test_shared_courses_from_mock_integration_server():
     assert _xml_text(response.text, "code") == "0"
     assert _xml_text(response.text, "data/meta/collegeId") == "C"
     assert _xml_text(response.text, "data/classes/class/id") in {"A001", "A003", "B001"}
+
+
+def test_demo_data_scale_and_internal_stats():
+    client, _ = _client()
+    stats = client.get("/internal/v1/stats/summary")
+    assert stats.status_code == 200
+    assert _xml_text(stats.text, "data/summary/collegeId") == "C"
+    assert _xml_text(stats.text, "data/summary/studentCount") == "50"
+    assert _xml_text(stats.text, "data/summary/courseCount") == "10"
+    assert _xml_text(stats.text, "data/summary/enrollmentCount") == "250"
+    assert _xml_text(stats.text, "data/summary/sharedCourseCount") == "5"
 
 
 def test_local_enrollment_is_idempotent_and_withdrawable():
@@ -76,8 +92,8 @@ def test_local_enrollment_is_idempotent_and_withdrawable():
       </meta>
       <choices>
         <choice>
-          <sid>C2024001</sid>
-          <cid>C001</cid>
+          <sid>C2024050</sid>
+          <cid>C005</cid>
           <score>0</score>
         </choice>
       </choices>

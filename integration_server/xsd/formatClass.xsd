@@ -18,6 +18,7 @@
             <xs:element name="score" type="xs:unsignedByte" minOccurs="0"/>
             <xs:element name="teacher" type="xs:string" minOccurs="0"/>
             <xs:element name="location" type="xs:string" minOccurs="0"/>
+            <xs:element name="collegeId" type="xs:string" minOccurs="0"/>
         </xs:sequence>
     </xs:complexType>
     

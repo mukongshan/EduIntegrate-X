@@ -13,6 +13,13 @@ from .xml_utils import parse_xml, transform_xml_with_xslt
 logger = logging.getLogger(__name__)
 
 
+def _to_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class CollegeGateway:
     """与学院系统交互的网关"""
     
@@ -36,7 +43,7 @@ class CollegeGateway:
         """从各学院服务汇总共享课程。
 
         学院端当前提供 `/api/v1/courses`，返回统一课程字段并带 `share` 标记。
-        集成服务器只输出统一 XML Schema 中定义的课程字段。
+        集成服务器输出统一课程字段，并附带开课学院用于前端路由选课请求。
         """
         target_college = college_id.upper() if college_id else None
         college_items = self.college_urls.items()
@@ -72,17 +79,42 @@ class CollegeGateway:
                         "score": course.get("score", "0"),
                         "teacher": course.get("teacher", ""),
                         "location": course.get("location", ""),
+                        "collegeId": source_college_id,
                     })
             except Exception as exc:
                 logger.warning("[SharedCourses] Failed to fetch %s courses: %s", source_college_id, exc)
         return courses
 
     async def get_live_college_summary(self) -> dict:
-        """优先从学院端实时拉取课程统计，返回按学院聚合的统计数据。"""
+        """优先从学院端实时拉取统计；旧学院端不可用时回退到课程接口。"""
         summary = {}
         for college_id, college_url in self.college_urls.items():
             if not college_url:
                 continue
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        f"{college_url}/internal/v1/stats/summary",
+                        headers={"Accept": "application/xml"},
+                        timeout=self.timeout,
+                    )
+                if response.status_code == 200:
+                    parsed = parse_xml(response.text)
+                    data = parsed.get("Response", {}).get("data", {})
+                    item = data.get("summary", {})
+                    if item:
+                        enrollment_count = _to_int(item.get("enrollmentCount", 0))
+                        summary[college_id] = {
+                            "student_count": _to_int(item.get("studentCount", 0)),
+                            "course_count": _to_int(item.get("courseCount", 0)),
+                            "total_enrollments": enrollment_count,
+                            "enrolled_count": enrollment_count,
+                            "incoming_enrollments": 0,
+                            "shared_course_count": _to_int(item.get("sharedCourseCount", 0)),
+                        }
+                        continue
+            except Exception as exc:
+                logger.warning("[Stats] Failed to fetch %s stats summary: %s", college_id, exc)
             try:
                 async with httpx.AsyncClient() as client:
                     response = await client.get(

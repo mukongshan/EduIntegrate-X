@@ -73,6 +73,9 @@ class TestSharedCourses:
         data = xmltodict.parse(response.text)
         assert data["Response"]["code"] == "0"
         assert "classes" in data["Response"]["data"]
+        courses = data["Response"]["data"]["classes"]["class"]
+        first_course = courses[0] if isinstance(courses, list) else courses
+        assert "collegeId" in first_course
     
     def test_get_shared_courses_by_college(self, client):
         """按学院获取共享课程"""
@@ -254,6 +257,75 @@ class TestStats:
         assert data["Response"]["code"] == "0"
         assert "Summary" in data["Response"]["data"]
         assert "total" in data["Response"]["data"]["Summary"]
+
+    def test_get_stats_summary_prefers_live_college_stats(self, client, auth_headers):
+        """统计汇总优先使用学院端实时 50/10/250 数据。"""
+        from integration_server.app import _app_state
+
+        class FakeGateway:
+            async def get_live_college_summary(self):
+                return {
+                    college: {
+                        "student_count": 50,
+                        "course_count": 10,
+                        "total_enrollments": 250,
+                        "enrolled_count": 250,
+                        "incoming_enrollments": 0,
+                        "shared_course_count": 5,
+                    }
+                    for college in ("A", "B", "C")
+                }
+
+        _app_state["gateway"] = FakeGateway()
+        response = client.get("/api/v1/stats/summary", headers=auth_headers)
+        assert response.status_code == 200
+        data = xmltodict.parse(response.text)
+        colleges = data["Response"]["data"]["Summary"]["college"]
+        assert all(item["studentCount"] == "50" for item in colleges)
+        assert all(item["courseCount"] == "10" for item in colleges)
+        assert all(item["enrollmentCount"] == "250" for item in colleges)
+        assert data["Response"]["data"]["Summary"]["total"]["studentCount"] == "150"
+        assert data["Response"]["data"]["Summary"]["total"]["courseCount"] == "30"
+        assert data["Response"]["data"]["Summary"]["total"]["enrollmentCount"] == "750"
+
+
+class TestStudentEnrollments:
+    """学生选课列表接口测试"""
+
+    def test_list_student_enrollments_excludes_withdrawn_records(self, client, repo):
+        """只返回当前未退选的记录。"""
+        from integration_server.models import EnrollmentRecord, EnrollmentStatus
+
+        active = EnrollmentRecord(
+            enrollment_id="E_STU_ACTIVE",
+            home_college_id="A",
+            target_college_id="B",
+            student_id="S2024001",
+            course_id="B001",
+            status=EnrollmentStatus.ENROLLED,
+        )
+        withdrawn = EnrollmentRecord(
+            enrollment_id="E_STU_WITHDRAWN",
+            home_college_id="A",
+            target_college_id="C",
+            student_id="S2024001",
+            course_id="C001",
+            status=EnrollmentStatus.ENROLLED,
+        )
+        repo.create_enrollment(active)
+        repo.create_enrollment(withdrawn)
+        repo.update_enrollment_status("E_STU_WITHDRAWN", EnrollmentStatus.WITHDRAWN)
+
+        response = client.get("/api/v1/students/S2024001/enrollments")
+        assert response.status_code == 200
+        data = xmltodict.parse(response.text)
+        assert data["Response"]["code"] == "0"
+        records = data["Response"]["data"]["enrollments"]["enrollment"]
+        records = records if isinstance(records, list) else [records]
+        ids = {item["enrollmentId"] for item in records}
+        assert "E_STU_ACTIVE" in ids
+        assert "E_STU_WITHDRAWN" not in ids
+        assert records[0]["sid"] == "S2024001"
 
 
 class TestRepository:

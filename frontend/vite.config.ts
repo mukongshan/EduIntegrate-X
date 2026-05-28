@@ -4,9 +4,11 @@ import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 
 const rootDir = dirname(fileURLToPath(import.meta.url))
+const repoDir = dirname(rootDir)
 
 export default defineConfig({
     root: rootDir,
+    envDir: repoDir,
     appType: 'spa',
     plugins: [react()],
     server: {

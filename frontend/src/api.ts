@@ -11,6 +11,7 @@ const BACKEND_MAP: Record<string, string> = {
     C: import.meta.env.VITE_API_URL_C || '',
     INTEGRATION: import.meta.env.VITE_API_URL_INTEGRATION || ''
 }
+const INTEGRATION_API_KEY = import.meta.env.VITE_INTEGRATION_API_KEY || 'integration-server-api-key-2026'
 
 type Course = { id: string; name: string; time: number; score: number; teacher: string; location: string; collegeId?: string }
 type Enrollment = { enrollmentId: string; cid: string; name: string; status: 'ENROLLED' | 'WITHDRAWN'; sid: string }
@@ -25,9 +26,12 @@ type LoginResult = { code: number; message: string; data: { sid: string; name: s
 const MOCK_ENROLLMENTS_KEY = 'eduintegrate.mock.enrollments'
 
 const localMockCourses: Course[] = [
-    { id: 'C001', name: '数据库系统', time: 32, score: 3, teacher: '张老师', location: '1-301', collegeId: 'A' },
-    { id: 'C018', name: '数据仓库基础', time: 24, score: 2, teacher: '李老师', location: '2-205', collegeId: 'B' },
-    { id: 'C023', name: 'XML 数据交换', time: 16, score: 2, teacher: '王老师', location: '3-102', collegeId: 'C' }
+    { id: 'A001', name: '数据库系统', time: 32, score: 3, teacher: '张老师', location: '1-301', collegeId: 'A' },
+    { id: 'A003', name: '数仓基础', time: 24, score: 2, teacher: '王老师', location: '3-105', collegeId: 'A' },
+    { id: 'B001', name: '分布式系统', time: 32, score: 3, teacher: '周老师', location: 'B-201', collegeId: 'B' },
+    { id: 'B002', name: '机器学习基础', time: 24, score: 2, teacher: '吴老师', location: 'B-305', collegeId: 'B' },
+    { id: 'C001', name: '软件工程', time: 32, score: 3, teacher: '陈老师', location: 'C-401', collegeId: 'C' },
+    { id: 'C003', name: '数据挖掘', time: 32, score: 3, teacher: '黄老师', location: 'C-210', collegeId: 'C' }
 ]
 
 // 本院课程（仅属于当前学院，不带 collegeId 或 collegeId 等于当前学院）
@@ -161,7 +165,7 @@ function ensureXmlResponseShape(json: any) {
     }
 }
 
-export async function loginWithPassword(sid: string, password: string): Promise<LoginResult> {
+export async function loginWithPassword(sid: string, password: string, collegeId = 'A'): Promise<LoginResult> {
     if (MOCK) {
         const user = localMockState.users[sid as keyof typeof localMockState.users]
         if (!user || user.password !== password) {
@@ -169,20 +173,21 @@ export async function loginWithPassword(sid: string, password: string): Promise<
         }
         return { code: 0, message: 'success', data: { sid, name: user.name } }
     }
-    const xml = builder.build({ LoginRequest: { sid, password } })
+    const xml = builder.build({ LoginRequest: { username: sid, password } })
     try {
-        const json = await fetchXml('/api/v1/auth/login', {
+        const json = await fetchCollegeXml(collegeId, '/api/v1/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/xml', Accept: 'application/xml' },
             body: xml
         })
         const resp = ensureXmlResponseShape(json)
+        const user = resp.data?.user || {}
         return {
             code: resp.code,
             message: resp.message,
             data: {
-                sid: resp.data?.sid || resp.data?.id || sid,
-                name: resp.data?.name || ''
+                sid: user?.studentId || resp.data?.sid || resp.data?.id || sid,
+                name: user?.name || resp.data?.name || user?.username || ''
             }
         }
     } catch {
@@ -195,7 +200,6 @@ const INTEGRATION_PATTERNS = [
     '/api/v1/shared-courses',
     '/api/v1/enrollments',
     '/api/v1/stats/summary',
-    '/api/v1/auth/login',
 ]
 // Paths with /college/{collegeId} prefix that map to college backends
 const COLLEGE_PATTERNS = [
@@ -235,6 +239,14 @@ async function fetchXml(path: string, init?: RequestInit) {
     return parser.parse(text)
 }
 
+async function fetchCollegeXml(collegeId: string, path: string, init?: RequestInit) {
+    const base = BACKEND_MAP[collegeId.toUpperCase()] || ''
+    const url = base ? `${base}${path}` : path
+    const res = await fetch(url, init)
+    const text = await res.text()
+    return parser.parse(text)
+}
+
 export async function fetchSharedCourses() {
     if (MOCK) {
         return localMockSharedCourses()
@@ -244,7 +256,7 @@ export async function fetchSharedCourses() {
         const classes = normalizeArray(json?.Response?.data?.classes?.class).map(normalizeCourse)
         return { classes }
     } catch {
-        return localMockSharedCourses()
+        return { classes: [] }
     }
 }
 
@@ -253,11 +265,11 @@ export async function fetchLocalCourses(collegeId: string) {
         return localMockLocalCoursesFiltered(collegeId)
     }
     try {
-        const json = await fetchXml(`/api/v1/college/${collegeId}/courses`, { headers: { Accept: 'application/xml' } })
-        const classes = normalizeArray(json?.Response?.data?.classes?.class).map(normalizeCourse)
+        const json = await fetchCollegeXml(collegeId, '/api/v1/courses', { headers: { Accept: 'application/xml' } })
+        const classes = normalizeArray(json?.Response?.data?.courses?.course).map(normalizeCourse)
         return { classes }
     } catch {
-        return localMockLocalCoursesFiltered(collegeId)
+        return { classes: [] }
     }
 }
 
@@ -294,8 +306,8 @@ export async function postEnrollment(sid: string, cid: string, homeCollegeId = '
     try {
         const json = await fetchXml('/api/v1/enrollments', { method: 'POST', headers: { 'Content-Type': 'application/xml', Accept: 'application/xml' }, body: xml })
         return ensureXmlResponseShape(json)
-    } catch {
-        return { code: 0, message: 'success', data: { enrollmentId: `E${Date.now()}` } }
+    } catch (error) {
+        return { code: 500, message: error instanceof Error ? error.message : 'enrollment failed', data: {} }
     }
 }
 
@@ -319,8 +331,8 @@ export async function withdrawEnrollment(enrollmentId: string, sid = '', cid = '
     try {
         const json = await fetchXml(`/api/v1/enrollments/${enrollmentId}/withdraw`, { method: 'POST', headers: { 'Content-Type': 'application/xml', Accept: 'application/xml' }, body: xml })
         return ensureXmlResponseShape(json)
-    } catch {
-        return { code: 0, message: 'withdraw success', data: { enrollmentId } }
+    } catch (error) {
+        return { code: 500, message: error instanceof Error ? error.message : 'withdraw failed', data: { enrollmentId } }
     }
 }
 
@@ -339,7 +351,7 @@ export async function fetchMyEnrollments(sid: string) {
             sid
         }))
     } catch {
-        return localMockEnrollments(sid)
+        return []
     }
 }
 
@@ -348,7 +360,7 @@ export async function fetchStats() {
         return localMockStats()
     }
     try {
-        const json = await fetchXml('/api/v1/stats/summary', { headers: { Accept: 'application/xml' } })
+        const json = await fetchXml('/api/v1/stats/summary', { headers: { Accept: 'application/xml', Authorization: `Bearer ${INTEGRATION_API_KEY}` } })
         const colleges = normalizeArray(json?.Response?.data?.Summary?.college).map((item: any) => ({
             collegeId: item.collegeId || item.collegeID || '',
             studentCount: Number(item.studentCount || 0),
@@ -365,6 +377,6 @@ export async function fetchStats() {
         )
         return { colleges, totals, categories: localMockStats().categories }
     } catch {
-        return localMockStats()
+        return { colleges: [], totals: { students: 0, courses: 0, enrollments: 0 }, categories: localMockStats().categories }
     }
 }
